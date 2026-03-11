@@ -70,3 +70,48 @@ void handle_request(int nfd){
 
 
 }
+
+
+
+void run_service(int fd) {
+	struct sigaction sa = {
+		.sa_handler = sigchild_handler, .sa_flags = SA_RESTART
+	};
+
+	sigaction(SIGCHLD, &sa, NULL);
+	
+	while(1) {
+		int nfd = accept_connection(fd);
+		
+		if (nfd == -1) continue;
+				
+		if (fork() == 0 ){
+			close(fd);
+			handle_request(nfd);
+			exit(0);
+		}
+		close(nfd);
+
+	}
+
+
+}
+
+
+int main(int argc, char* argv[]){
+	if(argc != 2) {
+		fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+		exit(1);
+	}
+	
+	int port = atoi(argv[1]);
+	int fd = create_service(port);
+	if (fd == -1){
+		perror("create_service");
+		exit(1);
+	}
+
+	printf("httpd running on port %d...\n", port);
+	run_service(fd);
+	return 0;
+}
