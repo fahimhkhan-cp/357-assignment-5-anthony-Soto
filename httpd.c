@@ -25,7 +25,7 @@ void handle_file(FILE *network, char *method, char *filename){
 		return;
 	}
 
-	fprintf(network, "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n", (long)st.st_size;
+	fprintf(network, "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n", (long)st.st_size);
 
 	if (strcmp(method, "GET") == 0) {
 		FILE *f = fopen(filename, "r");
@@ -38,4 +38,35 @@ void handle_file(FILE *network, char *method, char *filename){
 			fclose(f);
 		}
 	} 
+}
+
+
+void handle_request(int nfd){
+	FILE *network = fdopen(nfd, "r+");
+	char *line= NULL;
+	size_t size = 0;
+	
+	if (getline(&line, &size, network) > 0){
+		char method[16];
+		char path[256];
+		char protocol[16];
+
+		if (sscanf(line, "%s %s %s", method, path, protocol) == 3) {
+			if(strstr(path, "..")){
+				fprintf(network, "HTTP/1.0 403 Permission Denied\r\n\r\n403 Forbidden");
+			} else if (strncmp(path, "/cgi-like/", 10) == 0){
+				handle_cgi(network, method, path);
+			} else {
+				handle_file(network, method, path + 1);
+			}
+		} else {
+			fprintf(network, "HTTP/1.0 400 Bad Request\r\n\r\n400 Bad Request");
+		}
+	}	
+	fflush(network);
+	free(line);
+	fclose(network);
+
+
+
 }
