@@ -115,8 +115,8 @@ void handle_file(FILE *network, char *method, char *filename){
 			while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
 				fwrite(buf, 1, n, network);
 			}
-			fclose(f);
 			fflush(network);
+			fclose(f);
 		}
 	
 	} 
@@ -124,21 +124,26 @@ void handle_file(FILE *network, char *method, char *filename){
 
 
 void handle_request(int nfd){
-	FILE *network = fdopen(nfd, "r+");
-	setbuf(network, NULL);
-	
-	if (!network){
-		perror("fdopen failed");
-		close(nfd);
-		return;
-	}	
+	printf("DEBUG: Child %d reached handle_request\n", getpid());	
+
+	FILE *in = fdopen(nfd, "r");
+	FILE *out = fdopen(dup(nfd), "w");	
 
 
 
 	char *line= NULL;
 	size_t size = 0;
-	
-	if (getline(&line, &size, network) > 0){
+
+	if (!in || !out){
+		if (in) fclose(in);
+		if (out) fclose(out);
+		close(nfd);
+		return;
+	}
+
+	setvbuf(out, NULL, _IONBF, 0);
+
+	if (getline(&line, &size, in) > 0){
 		printf("DEBUG: Received Request: %s", line);
 	
 
@@ -149,28 +154,29 @@ void handle_request(int nfd){
 		if (sscanf(line, "%15s %255s %15s", method, path, protocol) == 3) {
 			printf("DEBUG: sscanf matches");
 			if (strcmp(method, "GET") != 0 && strcmp(method, "HEAD") != 0){
-				fprintf(network, "HTTP/1.0 501 Not Implemented\r\n\r\n501 Method Not Supported");
-				fflush(network);
+				fprintf(out, "HTTP/1.0 501 Not Implemented\r\n\r\n501 Method Not Supported");
+				fflush(out);
 			}else if(strstr(path, "..")){
-				fprintf(network, "HTTP/1.0 403 Permission Denied\r\n\r\n403 Forbidden");
-				fflush(network);
+				fprintf(out, "HTTP/1.0 403 Permission Denied\r\n\r\n403 Forbidden");
+				fflush(out);
 			} else if (strncmp(path, "/cgi-like/", 10) == 0){
 				printf("DEBUG: Routing to CGI: %s\n", path);
 
-				handle_cgi(network, method, path);
+				handle_cgi(out, method, path);
 			} else {
 				printf("DEBUG: Routing to File: %s\n", path + 1);
-				handle_file(network, method, path + 1);
+				handle_file(out, method, path + 1);
 			}
 		} else {
-			fprintf(network, "HTTP/1.0 400 Bad Request\r\n\r\n400 Bad Request");
-			fflush(network);
+			fprintf(out, "HTTP/1.0 400 Bad Request\r\n\r\n400 Bad Request");
+			fflush(out);
 			
 		}
 	}	
-	fflush(network);
+	fflush(out);
 	free(line);
-	fclose(network);
+	fclose(in);
+	fclose(out);
 	printf("DEBUG: Child %d finished request.\n", getpid());
 
 
@@ -199,9 +205,9 @@ void run_service(int fd) {
 			exit(0);
 		}
 		
-	
-		
 		close(nfd);
+		
+	
 
 	}
 
