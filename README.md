@@ -3,3 +3,4 @@
 # 357-assignment-[ADD ASSIGNMENT NUMBER]
 
 [ADD YOUR README TEXT HERE]
+This is by far the hardest assignment we have had to do, I have been working on it for multiple days and I am still having errors when i try to use a curl to connect to the file through the localhost, but it was able to run on telnet> I am still trying to get the assignment to work, but If I cannot, I will accept it with grace because I have been trying to find what is wrong, I have even resorted to using AI tools to try and check my code for logical or resource handling errors and I just can not find where it is not working. I am hoping ot get partial credit for what I have done so that I do not just outright do not get the points, but I am at my wits end on how to handle the errors I am running into. 
