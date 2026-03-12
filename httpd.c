@@ -145,7 +145,15 @@ void handle_request(int nfd){
 
 	if (getline(&line, &size, in) > 0){
 		printf("DEBUG: Received Request: %s", line);
-	
+		
+		char* header = NULL;
+		size_t h_size = 0;
+		
+		while (getline(&header, &h_size, in) > 0){
+			if (strcmp(header, "\r\n") == 0 || strcmp(header, "\n") == 0) {
+				break;
+			}
+		}	
 
 		char method[16];
 		char path[256];
@@ -194,6 +202,8 @@ void run_service(int fd) {
 	while(1) {
 		int nfd = accept_connection(fd);
 		
+
+		printf("established connection");
 		if (nfd == -1) continue;
 		pid_t pid = fork();
 		if (pid < 0){
