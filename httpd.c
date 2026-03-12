@@ -150,10 +150,11 @@ void handle_request(int nfd){
 		size_t h_size = 0;
 		
 		while (getline(&header, &h_size, in) > 0){
-			if (strcmp(header, "\r\n") == 0 || strcmp(header, "\n") == 0) {
+			if (strcmp(header, "\r\n\r\n") == 0 || strcmp(header, "\n") == 0) {
 				break;
 			}
 		}	
+		free(header);
 
 		char method[16];
 		char path[256];
@@ -201,10 +202,14 @@ void run_service(int fd) {
 	
 	while(1) {
 		int nfd = accept_connection(fd);
-		
+				
 
 		printf("established connection");
-		if (nfd == -1) continue;
+		if (nfd == -1){
+			perror("accept_connection error");
+			 continue;
+
+		}
 		pid_t pid = fork();
 		if (pid < 0){
 			perror("fork failed");
