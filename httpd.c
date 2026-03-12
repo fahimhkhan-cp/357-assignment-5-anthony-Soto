@@ -150,7 +150,7 @@ void handle_request(int nfd){
 		size_t h_size = 0;
 		
 		while (getline(&header, &h_size, in) > 0){
-			if (strcmp(header, "\r\n\r\n") == 0 || strcmp(header, "\n") == 0) {
+			if (header[0] == '\r' || header[0] == '\n') {
 				break;
 			}
 		}	
