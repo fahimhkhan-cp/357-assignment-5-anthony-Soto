@@ -141,7 +141,7 @@ void handle_request(int nfd){
 	if (getline(&line, &size, network) > 0){
 		printf("DEBUG: Received Request: %s", line);
 	
-		fprintf(network, "HTTP/1.0 200 OK\r\n"); 
+
 		char method[16];
 		char path[256];
 		char protocol[16];
@@ -189,18 +189,17 @@ void run_service(int fd) {
 		int nfd = accept_connection(fd);
 		
 		if (nfd == -1) continue;
-		pid_t pid = fork();		
-		if (pid == 0 ){
+		pid_t pid = fork();
+		if (pid < 0){
+			perror("fork failed");
+		} else if (pid == 0 ){
 			close(fd);
 			handle_request(nfd);
+			printf("child %d  exiting now", getpid());
 			exit(0);
 		}
 		
-		int status;
-		waitpid(pid, &status, 0);
-		if (WIFSIGNALED(status)) {
-			printf("Child process crashed with signal %d\n", WTERMSIG(status));
-		}
+	
 		
 		close(nfd);
 
@@ -211,6 +210,10 @@ void run_service(int fd) {
 
 
 int main(int argc, char* argv[]){
+	setvbuf(stdout, NULL, _IONBF, 0);
+	setvbuf(stderr, NULL, _IONBF, 0);
+
+
 	if(argc != 2) {
 		fprintf(stderr, "Usage: %s <port>\n", argv[0]);
 		exit(1);
