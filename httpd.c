@@ -18,15 +18,95 @@ void sigchild_handler(int s){
 	}
 }
 
+void handle_cgi(FILE *network, char *method, char *path) {
+
+	char *query = strchr(path, '?');
+	char *args[64];
+	int arg_count = 0;
+
+	char *prog_path = path + 1;
+	if (query) {
+		*query = '\0';
+		args[arg_count++] = prog_path;
+		char *token = strtok(query + 1, "&");
+		
+		while (token && arg_count < 63){
+			args[arg_count++] = token;
+			token = strtok(NULL, "&");
+		
+		}
+	} else {
+		args[arg_count++] = prog_path;
+			
+	}
+	args[arg_count] = NULL;
+	
+
+	char tmp_filename[32];
+	sprintf(tmp_filename, "cgi_%d.tmp", getpid());
+	
+	pid_t pid = fork();
+	if (pid == -1) {
+		fprintf(network, "HTTP/1.0 500 Internal Error\r\n\r\n");
+		fflush(network);
+		return;
+	}
+
+	
+	if (pid == 0){
+		int fd = open(tmp_filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+		dup2(fd, STDOUT_FILENO);
+		close(fd);
+		execv(args[0], args);
+		printf("Status: 500\nError: Could not execute %s\n", args[0]);
+				
+		perror("execv failed");
+		exit(1);
+	}
+
+	waitpid(pid, NULL, 0);
+	struct stat st;
+	
+	if(stat(tmp_filename, &st) == 0){
+		fprintf(network, "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n", (long)st.st_size);
+		fflush(network);	
+		if (strcmp(method, "GET") == 0){
+			FILE *f = fopen(tmp_filename, "r");
+			char buf[1024];
+			size_t n;
+		
+			if (f){	
+				while ((n = fread(buf, 1, sizeof(buf), f)) > 0){
+					fwrite(buf, 1, n, network);
+				}
+				fclose(f);
+			}
+		
+		}
+	}else {
+		fprintf(network, "HTTP/1.0 500 Internal Error\r\n\r\n");
+		fflush(network);
+	}
+	unlink(tmp_filename);
+	
+
+
+}
+
+
+
+
+
 void handle_file(FILE *network, char *method, char *filename){
 	struct stat st;
 	if(stat(filename, &st) == -1){
 		fprintf(network, "HTTP/1.0 404 Not Found\r\nContent-Type: text/html\r\n\r\n404 not Found");
+		fflush(network);
 		return;
 	}
 
 	fprintf(network, "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length: %ld\r\n\r\n", (long)st.st_size);
-
+	fflush(network);
 	if (strcmp(method, "GET") == 0) {
 		FILE *f = fopen(filename, "r");
 		if(f) {
@@ -36,37 +116,62 @@ void handle_file(FILE *network, char *method, char *filename){
 				fwrite(buf, 1, n, network);
 			}
 			fclose(f);
+			fflush(network);
 		}
+	
 	} 
 }
 
 
 void handle_request(int nfd){
 	FILE *network = fdopen(nfd, "r+");
+	setbuf(network, NULL);
+	
+	if (!network){
+		perror("fdopen failed");
+		close(nfd);
+		return;
+	}	
+
+
+
 	char *line= NULL;
 	size_t size = 0;
 	
 	if (getline(&line, &size, network) > 0){
+		printf("DEBUG: Received Request: %s", line);
+	
+		fprintf(network, "HTTP/1.0 200 OK\r\n"); 
 		char method[16];
 		char path[256];
 		char protocol[16];
 
-		if (sscanf(line, "%s %s %s", method, path, protocol) == 3) {
-			if(strstr(path, "..")){
+		if (sscanf(line, "%15s %255s %15s", method, path, protocol) == 3) {
+			printf("DEBUG: sscanf matches");
+			if (strcmp(method, "GET") != 0 && strcmp(method, "HEAD") != 0){
+				fprintf(network, "HTTP/1.0 501 Not Implemented\r\n\r\n501 Method Not Supported");
+				fflush(network);
+			}else if(strstr(path, "..")){
 				fprintf(network, "HTTP/1.0 403 Permission Denied\r\n\r\n403 Forbidden");
+				fflush(network);
 			} else if (strncmp(path, "/cgi-like/", 10) == 0){
+				printf("DEBUG: Routing to CGI: %s\n", path);
+
 				handle_cgi(network, method, path);
 			} else {
+				printf("DEBUG: Routing to File: %s\n", path + 1);
 				handle_file(network, method, path + 1);
 			}
 		} else {
 			fprintf(network, "HTTP/1.0 400 Bad Request\r\n\r\n400 Bad Request");
+			fflush(network);
+			
 		}
 	}	
 	fflush(network);
 	free(line);
 	fclose(network);
-
+	printf("DEBUG: Child %d finished request.\n", getpid());
 
 
 }
@@ -84,12 +189,19 @@ void run_service(int fd) {
 		int nfd = accept_connection(fd);
 		
 		if (nfd == -1) continue;
-				
-		if (fork() == 0 ){
+		pid_t pid = fork();		
+		if (pid == 0 ){
 			close(fd);
 			handle_request(nfd);
 			exit(0);
 		}
+		
+		int status;
+		waitpid(pid, &status, 0);
+		if (WIFSIGNALED(status)) {
+			printf("Child process crashed with signal %d\n", WTERMSIG(status));
+		}
+		
 		close(nfd);
 
 	}
